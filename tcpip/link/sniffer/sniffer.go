@@ -22,7 +22,6 @@ import (
 	"github.com/google/netstack/tcpip"
 	"github.com/google/netstack/tcpip/buffer"
 	"github.com/google/netstack/tcpip/header"
-	"github.com/google/netstack/tcpip/link/rawfile"
 	"github.com/google/netstack/tcpip/stack"
 	"log"
 )
@@ -128,8 +127,14 @@ func (e *endpoint) DeliverNetworkPacket(linkEP stack.LinkEndpoint, remoteLinkAdd
 		buf := bytes.NewBuffer(make([]byte, 0, pcapPacketHeaderLen))
 		binary.Write(buf, binary.BigEndian, newPCAPPacketHeader(uint32(length), uint32(vv.Size())))
 		bs[0] = buf.Bytes()
-		if err := rawfile.NonBlockingWriteN(int(e.file.Fd()), bs...); err != nil {
-			panic(err)
+		//if err := rawfile.NonBlockingWriteN(int(e.file.Fd()), bs...); err != nil {
+		//	panic(err)
+		//}
+		for _, bsb := range bs {
+			_, err := e.file.Write(bsb)
+			if err != nil {
+				panic(err)
+			}
 		}
 	}
 	e.dispatcher.DeliverNetworkPacket(e, remoteLinkAddr, protocol, vv)
@@ -192,9 +197,16 @@ func (e *endpoint) WritePacket(r *stack.Route, hdr *buffer.Prependable, payload 
 		buf := bytes.NewBuffer(make([]byte, 0, pcapPacketHeaderLen))
 		binary.Write(buf, binary.BigEndian, newPCAPPacketHeader(uint32(length), uint32(hdr.UsedLength()+len(payload))))
 		bs[0] = buf.Bytes()
-		if err := rawfile.NonBlockingWriteN(int(e.file.Fd()), bs...); err != nil {
-			panic(err)
+		for _, bsb := range bs {
+			_, err := e.file.Write(bsb)
+			if err != nil {
+				panic(err)
+			}
 		}
+		//
+		//if err := rawfile.NonBlockingWriteN(int(e.file.Fd()), bs...); err != nil {
+		//	panic(err)
+		//}
 	}
 	return e.lower.WritePacket(r, hdr, payload, protocol)
 }

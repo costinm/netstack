@@ -4,6 +4,8 @@
 
 package fdbased
 
+// +build amd64
+
 import (
 	"fmt"
 	"math/rand"
