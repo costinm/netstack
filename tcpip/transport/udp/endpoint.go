@@ -17,7 +17,7 @@ import (
 
 type udpPacket struct {
 	udpPacketEntry
-	senderAddress tcpip.FullAddress
+	senderAddress tcpip.DoubleAddress
 	data          buffer.VectorisedView
 	timestamp     int64
 	hasTimestamp  bool
@@ -137,6 +137,37 @@ func (e *endpoint) Close() {
 // Read reads data from the endpoint. This method does not block if
 // there is no data pending.
 func (e *endpoint) Read(addr *tcpip.FullAddress) (buffer.View, tcpip.ControlMessages, *tcpip.Error) {
+	e.rcvMu.Lock()
+
+	if e.rcvList.Empty() {
+		err := tcpip.ErrWouldBlock
+		if e.rcvClosed {
+			err = tcpip.ErrClosedForReceive
+		}
+		e.rcvMu.Unlock()
+		return buffer.View{}, tcpip.ControlMessages{}, err
+	}
+
+	p := e.rcvList.Front()
+	e.rcvList.Remove(p)
+	e.rcvBufSize -= p.data.Size()
+	ts := e.rcvTimestamp
+
+	e.rcvMu.Unlock()
+
+	if addr != nil {
+		*addr = p.senderAddress.FullAddress
+	}
+
+	if ts && !p.hasTimestamp {
+		// Linux uses the current time.
+		p.timestamp = e.stack.NowNanoseconds()
+	}
+
+	return p.data.ToView(), tcpip.ControlMessages{HasTimestamp: ts, Timestamp: p.timestamp}, nil
+}
+
+func (e *endpoint) ReadLocal(addr *tcpip.DoubleAddress) (buffer.View, tcpip.ControlMessages, *tcpip.Error) {
 	e.rcvMu.Lock()
 
 	if e.rcvList.Empty() {
@@ -748,10 +779,13 @@ func (e *endpoint) HandlePacket(r *stack.Route, id stack.TransportEndpointID, vv
 
 	// Push new packet into receive list and increment the buffer size.
 	pkt := &udpPacket{
-		senderAddress: tcpip.FullAddress{
-			NIC:  r.NICID(),
-			Addr: id.RemoteAddress,
-			Port: hdr.SourcePort(),
+		senderAddress: tcpip.DoubleAddress{
+			FullAddress: tcpip.FullAddress{
+				NIC:  r.NICID(),
+				Addr: id.RemoteAddress,
+				Port: hdr.SourcePort()},
+			LocalAddr: id.LocalAddress,
+			LocalPort: hdr.DestinationPort(),
 		},
 	}
 	pkt.data = vv.Clone(pkt.views[:])

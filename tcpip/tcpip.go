@@ -217,6 +217,18 @@ type FullAddress struct {
 	Port uint16
 }
 
+type DoubleAddress struct {
+	FullAddress
+
+	// Addr is the network address.
+	LocalAddr Address
+
+	// Port is the transport port.
+	//
+	// This may not be used by all endpoint types.
+	LocalPort uint16
+}
+
 // Payload provides an interface around data that is being sent to an endpoint.
 // This allows the endpoint to request the amount of data it needs based on
 // internal buffers without exposing them. 'p.Get(p.Size())' reads all the data.
