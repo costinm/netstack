@@ -21,6 +21,7 @@ type protocolIDs struct {
 type transportEndpoints struct {
 	mu        sync.RWMutex
 	endpoints map[TransportEndpointID]TransportEndpoint
+	defaultEP TransportEndpoint
 }
 
 // transportDemuxer demultiplexes packets targeted at a transport endpoint
@@ -65,6 +66,11 @@ func (d *transportDemuxer) singleRegisterEndpoint(netProto tcpip.NetworkProtocol
 
 	eps.mu.Lock()
 	defer eps.mu.Unlock()
+
+	if id.LocalPort == 0xffff {
+		eps.defaultEP = ep
+		return nil
+	}
 
 	if _, ok := eps.endpoints[id]; ok {
 		return tcpip.ErrPortInUse
@@ -158,5 +164,9 @@ func (d *transportDemuxer) findEndpointLocked(eps *transportEndpoints, vv *buffe
 
 	// Try to find a match with only the local port.
 	nid.LocalAddress = ""
-	return eps.endpoints[nid]
+	if ep := eps.endpoints[nid]; ep != nil {
+		return ep
+	}
+
+	return eps.defaultEP
 }
