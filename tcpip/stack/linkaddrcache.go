@@ -1,6 +1,16 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package stack
 
@@ -78,12 +88,14 @@ type linkAddrEntry struct {
 	linkAddr   tcpip.LinkAddress
 	expiration time.Time
 	s          entryState
+	resDone    bool
 
 	// wakers is a set of waiters for address resolution result. Anytime
 	// state transitions out of 'incomplete' these waiters are notified.
 	wakers map[*sleep.Waker]struct{}
 
 	cancel chan struct{}
+	resCh  chan struct{}
 }
 
 func (e *linkAddrEntry) state() entryState {
@@ -172,15 +184,20 @@ func (c *linkAddrCache) makeAndAddEntry(k tcpip.FullAddress, v tcpip.LinkAddress
 	// someone waiting for address resolution on it.
 	entry.changeState(expired)
 	if entry.cancel != nil {
-		entry.cancel <- struct{}{}
+		if !entry.resDone {
+			close(entry.resCh)
+		}
+		close(entry.cancel)
 	}
 
 	*entry = linkAddrEntry{
 		addr:       k,
 		linkAddr:   v,
 		expiration: time.Now().Add(c.ageLimit),
+		resDone:    false,
 		wakers:     make(map[*sleep.Waker]struct{}),
 		cancel:     make(chan struct{}, 1),
+		resCh:      make(chan struct{}, 1),
 	}
 
 	c.cache[k] = entry
@@ -192,10 +209,10 @@ func (c *linkAddrCache) makeAndAddEntry(k tcpip.FullAddress, v tcpip.LinkAddress
 }
 
 // get reports any known link address for k.
-func (c *linkAddrCache) get(k tcpip.FullAddress, linkRes LinkAddressResolver, localAddr tcpip.Address, linkEP LinkEndpoint, waker *sleep.Waker) (tcpip.LinkAddress, *tcpip.Error) {
+func (c *linkAddrCache) get(k tcpip.FullAddress, linkRes LinkAddressResolver, localAddr tcpip.Address, linkEP LinkEndpoint, waker *sleep.Waker) (tcpip.LinkAddress, <-chan struct{}, *tcpip.Error) {
 	if linkRes != nil {
 		if addr, ok := linkRes.ResolveStaticAddress(k.Addr); ok {
-			return addr, nil
+			return addr, nil, nil
 		}
 	}
 
@@ -204,10 +221,11 @@ func (c *linkAddrCache) get(k tcpip.FullAddress, linkRes LinkAddressResolver, lo
 	if entry == nil || entry.state() == expired {
 		c.mu.Unlock()
 		if linkRes == nil {
-			return "", tcpip.ErrNoLinkAddress
+			return "", nil, tcpip.ErrNoLinkAddress
 		}
-		c.startAddressResolution(k, linkRes, localAddr, linkEP, waker)
-		return "", tcpip.ErrWouldBlock
+
+		ch := c.startAddressResolution(k, linkRes, localAddr, linkEP, waker)
+		return "", ch, tcpip.ErrWouldBlock
 	}
 	defer c.mu.Unlock()
 
@@ -217,13 +235,13 @@ func (c *linkAddrCache) get(k tcpip.FullAddress, linkRes LinkAddressResolver, lo
 		// in that case it's safe to consider it ready.
 		fallthrough
 	case ready:
-		return entry.linkAddr, nil
+		return entry.linkAddr, nil, nil
 	case failed:
-		return "", tcpip.ErrNoLinkAddress
+		return "", nil, tcpip.ErrNoLinkAddress
 	case incomplete:
 		// Address resolution is still in progress.
 		entry.addWaker(waker)
-		return "", tcpip.ErrWouldBlock
+		return "", entry.resCh, tcpip.ErrWouldBlock
 	default:
 		panic(fmt.Sprintf("invalid cache entry state: %d", s))
 	}
@@ -239,13 +257,13 @@ func (c *linkAddrCache) removeWaker(k tcpip.FullAddress, waker *sleep.Waker) {
 	}
 }
 
-func (c *linkAddrCache) startAddressResolution(k tcpip.FullAddress, linkRes LinkAddressResolver, localAddr tcpip.Address, linkEP LinkEndpoint, waker *sleep.Waker) {
+func (c *linkAddrCache) startAddressResolution(k tcpip.FullAddress, linkRes LinkAddressResolver, localAddr tcpip.Address, linkEP LinkEndpoint, waker *sleep.Waker) <-chan struct{} {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	// Look up again with lock held to ensure entry wasn't added by someone else.
 	if e := c.cache[k]; e != nil && e.state() != expired {
-		return
+		return nil
 	}
 
 	// Add 'incomplete' entry in the cache to mark that resolution is in progress.
@@ -264,6 +282,15 @@ func (c *linkAddrCache) startAddressResolution(k tcpip.FullAddress, linkRes Link
 			select {
 			case <-time.After(c.resolutionTimeout):
 				if stop := c.checkLinkRequest(k, i); stop {
+					// If entry is evicted then resCh is already closed.
+					c.mu.Lock()
+					if e, ok := c.cache[k]; ok {
+						if !e.resDone {
+							e.resDone = true
+							close(e.resCh)
+						}
+					}
+					c.mu.Unlock()
 					return
 				}
 			case <-cancel:
@@ -271,6 +298,7 @@ func (c *linkAddrCache) startAddressResolution(k tcpip.FullAddress, linkRes Link
 			}
 		}
 	}()
+	return e.resCh
 }
 
 // checkLinkRequest checks whether previous attempt to resolve address has succeeded

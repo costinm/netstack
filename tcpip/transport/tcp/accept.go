@@ -1,18 +1,28 @@
-// Copyright 2016 The Netstack Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright 2018 Google Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package tcp
 
 import (
-	"crypto/rand"
-	"crypto/sha1"
 	"encoding/binary"
 	"hash"
 	"io"
 	"sync"
 	"time"
 
+	"crypto/sha1"
+	"github.com/google/netstack/rand"
 	"github.com/google/netstack/sleep"
 	"github.com/google/netstack/tcpip"
 	"github.com/google/netstack/tcpip/header"
@@ -68,7 +78,8 @@ func encodeMSS(mss uint16) uint32 {
 // to go above a threshold.
 var synRcvdCount struct {
 	sync.Mutex
-	value uint64
+	value   uint64
+	pending sync.WaitGroup
 }
 
 // listenContext is used by a listening endpoint to store state used while
@@ -102,6 +113,7 @@ func incSynRcvdCount() bool {
 		return false
 	}
 
+	synRcvdCount.pending.Add(1)
 	synRcvdCount.value++
 
 	return true
@@ -115,6 +127,7 @@ func decSynRcvdCount() {
 	defer synRcvdCount.Unlock()
 
 	synRcvdCount.value--
+	synRcvdCount.pending.Done()
 }
 
 // newListenContext creates a new listen context.
@@ -350,9 +363,6 @@ func (e *endpoint) protocolListenLoop(rcvWnd seqnum.Size) *tcpip.Error {
 		e.mu.Lock()
 		e.state = stateClosed
 
-		// Notify waiters that the endpoint is shutdown.
-		e.waiterQueue.Notify(waiter.EventIn | waiter.EventOut)
-
 		// Do cleanup if needed.
 		e.completeWorkerLocked()
 
@@ -360,6 +370,9 @@ func (e *endpoint) protocolListenLoop(rcvWnd seqnum.Size) *tcpip.Error {
 			close(e.drainDone)
 		}
 		e.mu.Unlock()
+
+		// Notify waiters that the endpoint is shutdown.
+		e.waiterQueue.Notify(waiter.EventIn | waiter.EventOut)
 	}()
 
 	e.mu.Lock()
@@ -379,10 +392,12 @@ func (e *endpoint) protocolListenLoop(rcvWnd seqnum.Size) *tcpip.Error {
 				return nil
 			}
 			if n&notifyDrain != 0 {
-				for s := e.segmentQueue.dequeue(); s != nil; s = e.segmentQueue.dequeue() {
+				for !e.segmentQueue.empty() {
+					s := e.segmentQueue.dequeue()
 					e.handleListenSegment(ctx, s)
 					s.decRef()
 				}
+				synRcvdCount.pending.Wait()
 				close(e.drainDone)
 				<-e.undrain
 			}
