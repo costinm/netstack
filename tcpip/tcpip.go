@@ -367,6 +367,8 @@ type WriteOptions struct {
 	// More has the same semantics as Linux's MSG_MORE.
 	More bool
 
+	From *FullAddress
+
 	// EndOfRecord has the same semantics as Linux's MSG_EOR.
 	EndOfRecord bool
 }

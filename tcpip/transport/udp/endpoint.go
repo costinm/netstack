@@ -333,7 +333,7 @@ func (e *endpoint) Write(p tcpip.Payload, opts tcpip.WriteOptions) (uintptr, *tc
 	if err != nil {
 		return 0, err
 	}
-	sendUDP(route, v, e.id.LocalPort, dstPort)
+	sendUDP(route, v, e.id.LocalPort, dstPort, opts.From)
 	return uintptr(len(v)), nil
 }
 
@@ -429,7 +429,7 @@ func (e *endpoint) GetSockOpt(opt interface{}) *tcpip.Error {
 
 // sendUDP sends a UDP segment via the provided network endpoint and under the
 // provided identity.
-func sendUDP(r *stack.Route, data buffer.View, localPort, remotePort uint16) *tcpip.Error {
+func sendUDP(r *stack.Route, data buffer.View, localPort, remotePort uint16, from *tcpip.FullAddress) *tcpip.Error {
 	// Allocate a buffer for the UDP header.
 	hdr := buffer.NewPrependable(header.UDPMinimumSize + int(r.MaxHeaderLength()))
 
@@ -437,11 +437,19 @@ func sendUDP(r *stack.Route, data buffer.View, localPort, remotePort uint16) *tc
 	udp := header.UDP(hdr.Prepend(header.UDPMinimumSize))
 
 	length := uint16(hdr.UsedLength()) + uint16(len(data))
-	udp.Encode(&header.UDPFields{
-		SrcPort: localPort,
-		DstPort: remotePort,
-		Length:  length,
-	})
+	if from != nil {
+		udp.Encode(&header.UDPFields{
+			SrcPort: from.Port,
+			DstPort: remotePort,
+			Length:  length,
+		})
+	} else {
+		udp.Encode(&header.UDPFields{
+			SrcPort: localPort,
+			DstPort: remotePort,
+			Length:  length,
+		})
+	}
 
 	// Only calculate the checksum if offloading isn't supported.
 	if r.Capabilities()&stack.CapabilityChecksumOffload == 0 {
@@ -450,10 +458,17 @@ func sendUDP(r *stack.Route, data buffer.View, localPort, remotePort uint16) *tc
 			xsum = header.Checksum(data, xsum)
 		}
 
-		udp.SetChecksum(^udp.CalculateChecksum(xsum, length))
+		//udp.SetChecksum(^udp.CalculateChecksum(xsum, length))
+		udp.SetChecksum(0)
 	}
 
-	return r.WritePacket(&hdr, data, ProtocolNumber)
+	var err *tcpip.Error
+	if from != nil {
+		r.WritePacketSrc(&hdr, data, ProtocolNumber, from.Addr)
+	} else {
+		err = r.WritePacket(&hdr, data, ProtocolNumber)
+	}
+	return err
 }
 
 func (e *endpoint) checkV4Mapped(addr *tcpip.FullAddress, allowMismatch bool) (tcpip.NetworkProtocolNumber, *tcpip.Error) {

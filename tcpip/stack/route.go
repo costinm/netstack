@@ -112,6 +112,14 @@ func (r *Route) WritePacket(hdr *buffer.Prependable, payload buffer.View, protoc
 	return r.ref.ep.WritePacket(r, hdr, payload, protocol)
 }
 
+type WritePacketSrc interface {
+	WritePacketSrc(r *Route, hdr *buffer.Prependable, payload buffer.View, protocol tcpip.TransportProtocolNumber, src tcpip.Address) *tcpip.Error
+}
+
+func (r *Route) WritePacketSrc(hdr *buffer.Prependable, payload buffer.View, protocol tcpip.TransportProtocolNumber, src tcpip.Address) *tcpip.Error {
+	return r.ref.ep.(WritePacketSrc).WritePacketSrc(r, hdr, payload, protocol, src)
+}
+
 // MTU returns the MTU of the underlying network endpoint.
 func (r *Route) MTU() uint32 {
 	return r.ref.ep.MTU()

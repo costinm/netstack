@@ -96,11 +96,11 @@ func (e *endpoint) WritePacket(r *stack.Route, hdr *buffer.Prependable, payload 
 	ip := header.IPv4(hdr.Prepend(header.IPv4MinimumSize))
 	length := uint16(hdr.UsedLength() + len(payload))
 	id := uint32(0)
-	if length > header.IPv4MaximumHeaderSize+8 {
-		// Packets of 68 bytes or less are required by RFC 791 to not be
-		// fragmented, so we only assign ids to larger packets.
-		id = atomic.AddUint32(&ids[hashRoute(r, protocol)%buckets], 1)
-	}
+	//if length > header.IPv4MaximumHeaderSize+8 {
+	// Packets of 68 bytes or less are required by RFC 791 to not be
+	// fragmented, so we only assign ids to larger packets.
+	id = atomic.AddUint32(&ids[hashRoute(r, protocol)%buckets], 1)
+	//}
 	ip.Encode(&header.IPv4Fields{
 		IHL:         header.IPv4MinimumSize,
 		TotalLength: length,
@@ -108,6 +108,29 @@ func (e *endpoint) WritePacket(r *stack.Route, hdr *buffer.Prependable, payload 
 		TTL:         65,
 		Protocol:    uint8(protocol),
 		SrcAddr:     tcpip.Address(e.address[:]),
+		DstAddr:     r.RemoteAddress,
+	})
+	ip.SetChecksum(^ip.CalculateChecksum())
+
+	return e.linkEP.WritePacket(r, hdr, payload, ProtocolNumber)
+}
+
+func (e *endpoint) WritePacketSrc(r *stack.Route, hdr *buffer.Prependable, payload buffer.View, protocol tcpip.TransportProtocolNumber, src tcpip.Address) *tcpip.Error {
+	ip := header.IPv4(hdr.Prepend(header.IPv4MinimumSize))
+	length := uint16(hdr.UsedLength() + len(payload))
+	id := uint32(0)
+	//if length > header.IPv4MaximumHeaderSize+8 {
+	// Packets of 68 bytes or less are required by RFC 791 to not be
+	// fragmented, so we only assign ids to larger packets.
+	id = atomic.AddUint32(&ids[hashRoute(r, protocol)%buckets], 1)
+	//}
+	ip.Encode(&header.IPv4Fields{
+		IHL:         header.IPv4MinimumSize,
+		TotalLength: length,
+		ID:          uint16(id),
+		TTL:         65,
+		Protocol:    uint8(protocol),
+		SrcAddr:     src,
 		DstAddr:     r.RemoteAddress,
 	})
 	ip.SetChecksum(^ip.CalculateChecksum())
