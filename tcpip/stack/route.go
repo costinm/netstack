@@ -147,11 +147,11 @@ func (r *Route) DefaultTTL() uint8 {
 }
 
 type WritePacketSrc interface {
-	WritePacketSrc(r *Route, hdr *buffer.Prependable, payload buffer.View, protocol tcpip.TransportProtocolNumber, src tcpip.Address) *tcpip.Error
+	WritePacketSrc(r *Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.TransportProtocolNumber, ttl uint8, src tcpip.Address) *tcpip.Error
 }
 
-func (r *Route) WritePacketSrc(hdr *buffer.Prependable, payload buffer.View, protocol tcpip.TransportProtocolNumber, src tcpip.Address) *tcpip.Error {
-	return r.ref.ep.(WritePacketSrc).WritePacketSrc(r, hdr, payload, protocol, src)
+func (r *Route) WritePacketSrc(hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.TransportProtocolNumber, ttl uint8, src tcpip.Address) *tcpip.Error {
+	return r.ref.ep.(WritePacketSrc).WritePacketSrc(r, hdr, payload, protocol, ttl, src)
 }
 
 // MTU returns the MTU of the underlying network endpoint.

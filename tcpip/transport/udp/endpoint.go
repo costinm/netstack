@@ -588,9 +588,9 @@ func sendUDP(r *stack.Route, data buffer.VectorisedView, localPort, remotePort u
 
 	var err *tcpip.Error
 	if from != nil {
-		r.WritePacketSrc(&hdr, data, ProtocolNumber, ttl, from.Addr)
+		r.WritePacketSrc(hdr, data, ProtocolNumber, ttl, from.Addr)
 	} else {
-		err = r.WritePacket(&hdr, data, ProtocolNumber, ttl)
+		err = r.WritePacket(hdr, data, ProtocolNumber, ttl)
 	}
 	return err
 }
