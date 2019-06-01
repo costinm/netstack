@@ -131,7 +131,8 @@ func (e *endpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload b
 	return e.linkEP.WritePacket(r, hdr, payload, ProtocolNumber)
 }
 
-func (e *endpoint) WritePacketSrc(r *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.TransportProtocolNumber, src tcpip.Address) *tcpip.Error {
+// WritePacketSrc writes a packet to the given destination address and protocol, using a specific source address.
+func (e *endpoint) WritePacketSrc(r *stack.Route, hdr buffer.Prependable, payload buffer.VectorisedView, protocol tcpip.TransportProtocolNumber, ttl uint8, src tcpip.Address) *tcpip.Error {
 	ip := header.IPv4(hdr.Prepend(header.IPv4MinimumSize))
 	length := uint16(hdr.UsedLength() + payload.Size())
 	id := uint32(0)

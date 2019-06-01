@@ -876,6 +876,15 @@ func (s *Stack) RegisterTransportEndpoint(nicID tcpip.NICID, netProtos []tcpip.N
 	return nic.demux.registerEndpoint(netProtos, protocol, id, ep)
 }
 
+// Capture sets the endpoint as the default capture endpoint.
+func (s *Stack) Capture(network tcpip.NetworkProtocolNumber,
+	transport tcpip.TransportProtocolNumber, ep TransportEndpoint) {
+	p, f := s.demux.protocol[protocolIDs{network, transport}]
+	if f {
+		p.defaultEP = ep
+	}
+}
+
 // UnregisterTransportEndpoint removes the endpoint with the given id from the
 // stack transport dispatcher.
 func (s *Stack) UnregisterTransportEndpoint(nicID tcpip.NICID, netProtos []tcpip.NetworkProtocolNumber, protocol tcpip.TransportProtocolNumber, id TransportEndpointID) {

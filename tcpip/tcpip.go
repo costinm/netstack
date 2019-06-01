@@ -395,6 +395,13 @@ type Endpoint interface {
 	GetSockOpt(opt interface{}) *Error
 }
 
+// CaptureBinder is an optional interface implemented by Endpoints that
+// allows binding to all ports, for transparent capture.
+// TODO: add capture options (filters, etc)
+type CaptureBinder interface {
+	CaptureBind(commit func() *Error) *Error
+}
+
 // WriteOptions contains options for Endpoint.Write.
 type WriteOptions struct {
 	// If To is not nil, write to the given address instead of the endpoint's

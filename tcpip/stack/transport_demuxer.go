@@ -43,6 +43,7 @@ type transportDemuxer struct {
 	protocol map[protocolIDs]*transportEndpoints
 }
 
+// Stack, NIC
 func newTransportDemuxer(stack *Stack) *transportDemuxer {
 	d := &transportDemuxer{protocol: make(map[protocolIDs]*transportEndpoints)}
 
@@ -78,10 +79,10 @@ func (d *transportDemuxer) singleRegisterEndpoint(netProto tcpip.NetworkProtocol
 	eps.mu.Lock()
 	defer eps.mu.Unlock()
 
-	if id.LocalPort == 0xffff {
-		eps.defaultEP = ep
-		return nil
-	}
+	//if id.LocalPort == 0xffff {
+	//	eps.defaultEP = ep
+	//	return nil
+	//}
 
 	if _, ok := eps.endpoints[id]; ok {
 		return tcpip.ErrPortInUse

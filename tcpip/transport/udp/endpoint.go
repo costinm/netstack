@@ -828,6 +828,10 @@ func (e *endpoint) bindLocked(addr tcpip.FullAddress, commit func() *tcpip.Error
 	return nil
 }
 
+func (e *endpoint) CaptureBind(commit func() *tcpip.Error) *tcpip.Error {
+	return nil
+}
+
 // Bind binds the endpoint to a specific local address and port.
 // Specifying a NIC is optional.
 func (e *endpoint) Bind(addr tcpip.FullAddress, commit func() *tcpip.Error) *tcpip.Error {

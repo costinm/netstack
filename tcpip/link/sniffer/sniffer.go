@@ -228,10 +228,6 @@ func (e *endpoint) WritePacket(r *stack.Route, hdr buffer.Prependable, payload b
 		if _, err := e.file.Write(buf.Bytes()); err != nil {
 			panic(err)
 		}
-		//
-		//if err := rawfile.NonBlockingWriteN(int(e.file.Fd()), bs...); err != nil {
-		//	panic(err)
-		//}
 	}
 	return e.lower.WritePacket(r, hdr, payload, protocol)
 }
