@@ -426,7 +426,8 @@ func (c *Conn) Close() error {
 
 // LocalAddr implements net.Conn.LocalAddr.
 func (c *Conn) LocalAddr() net.Addr {
-	a, err := c.ep.GetLocalAddress()
+	//a, err := c.ep.GetLocalAddress()
+	a, err := c.ep.GetRemoteAddress()
 	if err != nil {
 		return nil
 	}
@@ -435,7 +436,8 @@ func (c *Conn) LocalAddr() net.Addr {
 
 // RemoteAddr implements net.Conn.RemoteAddr.
 func (c *Conn) RemoteAddr() net.Addr {
-	a, err := c.ep.GetRemoteAddress()
+	//a, err := c.ep.GetRemoteAddress()
+	a, err := c.ep.GetLocalAddress()
 	if err != nil {
 		return nil
 	}
